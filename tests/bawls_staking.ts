@@ -79,8 +79,28 @@ describe("BAWLS Staking", () => {
     );
     vault = getAssociatedTokenAddressSync(mint, configPda, true);
     userATA = getAssociatedTokenAddressSync(mint, user.publicKey);
-    communityWallet = Keypair.generate().publicKey;
+    communityWallet = new PublicKey("79FSmHXEQzsizn57Rhfp9s4qgcNcCBRSK6LSLM1gfjWx"); 
     communityATA = getAssociatedTokenAddressSync(mint, communityWallet);
+    if (!(await connection.getAccountInfo(communityATA))) {
+      console.log("Creating Community ATA...");
+
+      const createCommunityAtaIx = createAssociatedTokenAccountInstruction(
+        payer.publicKey,
+        communityATA,
+        communityWallet,
+        mint
+      );
+
+      const tx = new Transaction().add(createCommunityAtaIx);
+
+      await sendAndConfirmTransaction(connection, tx, [payer]);
+
+      console.log("Community ATA created.");
+    }
+    console.log("Community ATA:", communityATA.toBase58());
+
+    await mintTo(connection, payer, mint, communityATA, payer, 2_000_000);  
+    console.log("Minted 2 tokens to Community Wallet");
 
     const vaultInfo = await connection.getAccountInfo(vault);
 
@@ -100,6 +120,7 @@ describe("BAWLS Staking", () => {
     } else {
       const vaultAcc = await getAccount(connection, vault);
       console.log("Vault exists. Owner:", vaultAcc.owner.toBase58());
+      console.log("Vault Address:", vault.toBase58());
     }
 
     for (const [label, ata, owner] of [

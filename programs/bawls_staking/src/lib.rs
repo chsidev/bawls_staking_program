@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, Transfer, Mint, TokenAccount};
 use anchor_spl::associated_token::{AssociatedToken, get_associated_token_address, Create, create};
 
-declare_id!("ErGCjKwVX6duw5Rww5k5T812LhXjjwPsKAYwTkg7MCv4");
+declare_id!("HsASQbqXhfQxBfnLEtuBEtBucqNpBmgP9dDTVsTUagjQ");
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const POOL_SEED: &[u8] = b"pool";
@@ -49,7 +49,7 @@ pub mod bawls_staking {
             signer,
         );
 
-        let _ = create(cpi_ctx); // safe to ignore if already exists
+        let _ = create(cpi_ctx); 
         Ok(())
     }
 

@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-bawls_staking = "ErGCjKwVX6duw5Rww5k5T812LhXjjwPsKAYwTkg7MCv4"
+bawls_staking = "HsASQbqXhfQxBfnLEtuBEtBucqNpBmgP9dDTVsTUagjQ"
 
 [registry]
 url = "https://api.apr.dev"
