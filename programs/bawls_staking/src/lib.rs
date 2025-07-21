@@ -14,6 +14,8 @@ pub mod bawls_staking {
     use super::*;
 
     pub fn initialize(ctx: Context<Initialize>, community_wallet: Pubkey) -> Result<()> {
+        ctx.accounts.config.paused = false;
+        ctx.accounts.user_state.locked = false;
         ctx.accounts.config.community_wallet = community_wallet;
         ctx.accounts.config.token_mint = ctx.accounts.token_mint.key();
         ctx.accounts.config.tax_percentage = 5;
@@ -62,6 +64,7 @@ pub mod bawls_staking {
     }
 
     pub fn stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
+        require!(!ctx.accounts.config.paused, StakingError::ContractPaused);
         require!(amount > 0, StakingError::InvalidStakeAmount);
 
         let cpi_ctx = ctx.accounts.transfer_to_vault_context();
@@ -77,6 +80,7 @@ pub mod bawls_staking {
     }
 
     pub fn unstake(ctx: Context<Unstake>) -> Result<()> {
+        require!(!ctx.accounts.config.paused, StakingError::ContractPaused);
         require!(!ctx.accounts.user_state.locked, StakingError::AlreadyProcessing);
         ctx.accounts.user_state.locked = true;
 
@@ -142,6 +146,7 @@ pub mod bawls_staking {
     }
 
     pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
+        require!(!ctx.accounts.config.paused, StakingError::ContractPaused);
         require!(!ctx.accounts.user_state.locked, StakingError::AlreadyProcessing);
         ctx.accounts.user_state.locked = true;
 
@@ -179,6 +184,12 @@ pub mod bawls_staking {
         })();
     ctx.accounts.user_state.locked = false;
     result        
+    }
+
+    pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
+        require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.config.authority, StakingError::Unauthorized);
+        ctx.accounts.config.paused = paused;
+        Ok(())
     }
 }
 
@@ -273,6 +284,13 @@ pub struct ClaimRewards<'info> {
     pub vault: Account<'info, TokenAccount>,
 }
 
+#[derive(Accounts)]
+pub struct SetPaused<'info> {
+    #[account(mut, has_one = authority)]
+    pub config: Account<'info, Config>,
+    pub authority: Signer<'info>,
+}
+
 #[account]
 pub struct Config {
     pub community_wallet: Pubkey,
@@ -327,4 +345,8 @@ pub enum StakingError {
     VaultOwnershipMismatch,
     #[msg("Action already in progress. Try again.")]
     AlreadyProcessing,
+    #[msg("The contract is currently paused.")]
+    ContractPaused,
+    #[msg("Unauthorized access.")]
+    Unauthorized,
 }
