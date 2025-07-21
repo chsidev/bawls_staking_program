@@ -77,94 +77,108 @@ pub mod bawls_staking {
     }
 
     pub fn unstake(ctx: Context<Unstake>) -> Result<()> {
-        let now = Clock::get()?.unix_timestamp;
-        let stake_duration = now - ctx.accounts.user_state.start_time;
-        let amount = ctx.accounts.user_state.amount;
+        require!(!ctx.accounts.user_state.locked, StakingError::AlreadyProcessing);
+        ctx.accounts.user_state.locked = true;
 
-        require!(amount > 0, StakingError::NothingToUnstake);
+        let result = (|| {
+            let now = Clock::get()?.unix_timestamp;
+            let stake_duration = now - ctx.accounts.user_state.start_time;
+            let amount = ctx.accounts.user_state.amount;
 
-        let tax = if stake_duration >= ctx.accounts.config.min_stake_duration {
-            0
-        } else {
-            (amount as u128 * ctx.accounts.config.tax_percentage as u128 / 100) as u64
-        };
+            require!(amount > 0, StakingError::NothingToUnstake);
 
-        let tax_to_pool = tax * 3 / 5;
-        let tax_to_community = tax - tax_to_pool;
-        let user_amount = amount - tax;
+            let tax = if stake_duration >= ctx.accounts.config.min_stake_duration {
+                0
+            } else {
+                (amount as u128 * ctx.accounts.config.tax_percentage as u128 / 100) as u64
+            };
 
-        require!(ctx.accounts.vault.amount >= amount, StakingError::VaultInsufficientBalance);
+            let tax_to_pool = tax * 3 / 5;
+            let tax_to_community = tax - tax_to_pool;
+            let user_amount = amount - tax;
 
-        ctx.accounts.pool.total_tax_collected += tax_to_pool;
-        ctx.accounts.pool.total_staked -= amount;
+            require!(ctx.accounts.vault.amount >= amount, StakingError::VaultInsufficientBalance);
 
-        ctx.accounts.user_state.amount = 0;
-        ctx.accounts.user_state.start_time = 0;
-        ctx.accounts.user_state.last_tax_snapshot = 0;
+            ctx.accounts.pool.total_tax_collected += tax_to_pool;
+            ctx.accounts.pool.total_staked -= amount;
 
-        let signer_seeds: &[&[u8]] = &[CONFIG_SEED, &[ctx.accounts.config.bump]];
-        let signer = &[signer_seeds];
+            ctx.accounts.user_state.amount = 0;
+            ctx.accounts.user_state.start_time = 0;
+            ctx.accounts.user_state.last_tax_snapshot = 0;
 
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.to.to_account_info(),
-                    authority: ctx.accounts.config.to_account_info(),
-                },
-                signer,
-            ),
-            user_amount,
-        )?;
+            let signer_seeds: &[&[u8]] = &[CONFIG_SEED, &[ctx.accounts.config.bump]];
+            let signer = &[signer_seeds];
 
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.community_ata.to_account_info(),
-                    authority: ctx.accounts.config.to_account_info(),
-                },
-                signer,
-            ),
-            tax_to_community,
-        )?;
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.to.to_account_info(),
+                        authority: ctx.accounts.config.to_account_info(),
+                    },
+                    signer,
+                ),
+                user_amount,
+            )?;
 
-        Ok(())
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.community_ata.to_account_info(),
+                        authority: ctx.accounts.config.to_account_info(),
+                    },
+                    signer,
+                ),
+                tax_to_community,
+            )?;
+            Ok(())
+        })();
+
+        ctx.accounts.user_state.locked = false;
+        result
     }
 
     pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
-        let user_stake = ctx.accounts.user_state.amount;
-        let total_staked = ctx.accounts.pool.total_staked;
-        require!(user_stake > 0 && total_staked > 0, StakingError::NothingToClaim);
+        require!(!ctx.accounts.user_state.locked, StakingError::AlreadyProcessing);
+        ctx.accounts.user_state.locked = true;
 
-        let new_rewards = ctx.accounts.pool.total_tax_collected - ctx.accounts.user_state.last_tax_snapshot;
-        require!(new_rewards > 0, StakingError::InsufficientFundsInPool);
+        let result = (|| {
+            let user_stake = ctx.accounts.user_state.amount;
+            let total_staked = ctx.accounts.pool.total_staked;
+            require!(user_stake > 0 && total_staked > 0, StakingError::NothingToClaim);
 
-        let user_reward = (user_stake as u128 * new_rewards as u128 / total_staked as u128) as u64;
-        require!(user_reward > 0, StakingError::InsufficientFundsInPool);
+            let new_rewards = ctx.accounts.pool.total_tax_collected - ctx.accounts.user_state.last_tax_snapshot;
+            require!(new_rewards > 0, StakingError::InsufficientFundsInPool);
 
-        ctx.accounts.pool.total_rewards_distributed += user_reward;
-        ctx.accounts.user_state.last_tax_snapshot = ctx.accounts.pool.total_tax_collected;
+            let user_reward = (user_stake as u128 * new_rewards as u128 / total_staked as u128) as u64;
+            require!(user_reward > 0, StakingError::InsufficientFundsInPool);
 
-        let signer_seeds: &[&[u8]] = &[CONFIG_SEED, &[ctx.accounts.config.bump]];
-        let signer = &[signer_seeds];
+            ctx.accounts.pool.total_rewards_distributed += user_reward;
+            ctx.accounts.user_state.last_tax_snapshot = ctx.accounts.pool.total_tax_collected;
 
-        token::transfer(
-            CpiContext::new_with_signer(
-                ctx.accounts.token_program.to_account_info(),
-                Transfer {
-                    from: ctx.accounts.vault.to_account_info(),
-                    to: ctx.accounts.to.to_account_info(),
-                    authority: ctx.accounts.config.to_account_info(),
-                },
-                signer,
-            ),
-            user_reward,
-        )?;
+            let signer_seeds: &[&[u8]] = &[CONFIG_SEED, &[ctx.accounts.config.bump]];
+            let signer = &[signer_seeds];
 
-        Ok(())
+            token::transfer(
+                CpiContext::new_with_signer(
+                    ctx.accounts.token_program.to_account_info(),
+                    Transfer {
+                        from: ctx.accounts.vault.to_account_info(),
+                        to: ctx.accounts.to.to_account_info(),
+                        authority: ctx.accounts.config.to_account_info(),
+                    },
+                    signer,
+                ),
+                user_reward,
+            )?;
+
+            Ok(())
+        })();
+    ctx.accounts.user_state.locked = false;
+    result        
     }
 }
 
@@ -199,7 +213,7 @@ pub struct CreateVault<'info> {
 
 #[derive(Accounts)]
 pub struct InitializeUserState<'info> {
-    #[account(init, payer = user, space = 8 + 8 + 8 + 32 + 8, seeds = [STATE_SEED, user.key().as_ref()], bump)]
+    #[account(init, payer = user, space = 8 + 8 + 8 + 32 + 8 + 1, seeds = [STATE_SEED, user.key().as_ref()], bump)]
     pub user_state: Account<'info, UserState>,
     #[account(mut)]
     pub user: Signer<'info>,
@@ -266,6 +280,7 @@ pub struct Config {
     pub tax_percentage: u8,
     pub min_stake_duration: i64,
     pub bump: u8,
+    pub paused: bool,
 }
 
 #[account]
@@ -274,6 +289,7 @@ pub struct UserState {
     pub start_time: i64,
     pub authority: Pubkey,
     pub last_tax_snapshot: u64,
+    pub locked: bool, 
 }
 
 #[account]
@@ -309,4 +325,6 @@ pub enum StakingError {
     VaultInsufficientBalance,
     #[msg("Vault ATA is not owned by config PDA.")]
     VaultOwnershipMismatch,
+    #[msg("Action already in progress. Try again.")]
+    AlreadyProcessing,
 }
