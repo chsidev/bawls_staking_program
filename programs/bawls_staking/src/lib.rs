@@ -193,6 +193,21 @@ pub mod bawls_staking {
         ctx.accounts.config.paused = paused;
         Ok(())
     }
+
+    pub fn set_config(
+        ctx: Context<SetConfig>,
+        new_community_wallet: Pubkey,
+        new_tax_percentage: u8,
+        new_min_stake_duration: i64,
+    ) -> Result<()> {
+        require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.config.authority, StakingError::Unauthorized);
+
+        ctx.accounts.config.community_wallet = new_community_wallet;
+        ctx.accounts.config.tax_percentage = new_tax_percentage;
+        ctx.accounts.config.min_stake_duration = new_min_stake_duration;
+
+        Ok(())
+    }
 }
 
 #[derive(Accounts)]
@@ -293,6 +308,14 @@ pub struct SetPaused<'info> {
     pub config: Account<'info, Config>,
     pub authority: Signer<'info>,
 }
+
+#[derive(Accounts)]
+pub struct SetConfig<'info> {
+    #[account(mut, has_one = authority)]
+    pub config: Account<'info, Config>,
+    pub authority: Signer<'info>,
+}
+
 
 #[account]
 pub struct Config {
