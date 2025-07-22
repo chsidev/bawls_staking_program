@@ -3,7 +3,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, Transfer, Mint, TokenAccount};
 use anchor_spl::associated_token::{AssociatedToken, get_associated_token_address, Create, create};
 
-declare_id!("HsASQbqXhfQxBfnLEtuBEtBucqNpBmgP9dDTVsTUagjQ");
+declare_id!("6WyJk3f8hLswT2FF52Ko8afuLYFpBWb83YDdgaGbTX4W");
 
 pub const CONFIG_SEED: &[u8] = b"config";
 pub const POOL_SEED: &[u8] = b"pool";
@@ -17,7 +17,6 @@ pub mod bawls_staking {
         require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.payer.key(), StakingError::Unauthorized);
         ctx.accounts.config.authority = ctx.accounts.authority.key();
         ctx.accounts.config.paused = false;
-        ctx.accounts.user_state.locked = false;
         ctx.accounts.config.community_wallet = community_wallet;
         ctx.accounts.config.token_mint = ctx.accounts.token_mint.key();
         ctx.accounts.config.tax_percentage = 5;
@@ -58,6 +57,7 @@ pub mod bawls_staking {
     }
 
     pub fn initialize_user_state(ctx: Context<InitializeUserState>) -> Result<()> {
+        ctx.accounts.user_state.locked = false;
         ctx.accounts.user_state.amount = 0;
         ctx.accounts.user_state.start_time = 0;
         ctx.accounts.user_state.authority = ctx.accounts.user.key();
@@ -77,6 +77,12 @@ pub mod bawls_staking {
         ctx.accounts.user_state.start_time = clock.unix_timestamp;
         ctx.accounts.user_state.last_tax_snapshot = ctx.accounts.pool.total_tax_collected;
         ctx.accounts.pool.total_staked += amount;
+
+        emit!(StakeEvent {
+            user: ctx.accounts.user.key(),
+            amount,
+            time: clock.unix_timestamp,
+        });
 
         Ok(())
     }
@@ -140,6 +146,13 @@ pub mod bawls_staking {
                 ),
                 tax_to_community,
             )?;
+            emit!(UnstakeEvent {
+                user: ctx.accounts.user.key(),
+                unstaked_amount: user_amount,
+                tax,
+                timestamp: now,
+            });
+
             Ok(())
         })();
 
@@ -181,6 +194,11 @@ pub mod bawls_staking {
                 ),
                 user_reward,
             )?;
+            emit!(ClaimRewardsEvent {
+                user: ctx.accounts.user.key(),
+                reward: user_reward,
+                timestamp: Clock::get()?.unix_timestamp,
+            });
 
             Ok(())
         })();
@@ -205,6 +223,13 @@ pub mod bawls_staking {
         ctx.accounts.config.community_wallet = new_community_wallet;
         ctx.accounts.config.tax_percentage = new_tax_percentage;
         ctx.accounts.config.min_stake_duration = new_min_stake_duration;
+
+        emit!(ConfigUpdatedEvent {
+            authority: ctx.accounts.authority.key(),
+            new_community_wallet,
+            new_tax_percentage,
+            new_min_stake_duration,
+        });
 
         Ok(())
     }
@@ -354,6 +379,36 @@ impl<'info> Stake<'info> {
         };
         CpiContext::new(self.token_program.to_account_info(), cpi_accounts)
     }
+}
+
+#[event]
+pub struct StakeEvent {
+    pub user: Pubkey,
+    pub amount: u64,
+    pub time: i64,
+}
+
+#[event]
+pub struct UnstakeEvent {
+    pub user: Pubkey,
+    pub unstaked_amount: u64,
+    pub tax: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct ClaimRewardsEvent {
+    pub user: Pubkey,
+    pub reward: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct ConfigUpdatedEvent {
+    pub authority: Pubkey,
+    pub new_community_wallet: Pubkey,
+    pub new_tax_percentage: u8,
+    pub new_min_stake_duration: i64,
 }
 
 #[error_code]
