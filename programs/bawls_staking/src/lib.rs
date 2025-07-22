@@ -32,6 +32,9 @@ pub mod bawls_staking {
     }
 
     pub fn create_vault(ctx: Context<CreateVault>) -> Result<()> {
+        // require_eq!(ctx.accounts.config.version, 1, StakingError::VersionMismatch);
+        assert_eq!(ctx.accounts.config.version, 1, "Version mismatch");
+
         let expected_vault = get_associated_token_address(&ctx.accounts.config.key(), &ctx.accounts.token_mint.key());
         require_keys_eq!(ctx.accounts.vault.key(), expected_vault, StakingError::VaultOwnershipMismatch);
 
@@ -70,6 +73,9 @@ pub mod bawls_staking {
     }
 
     pub fn stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
+        // require_eq!(ctx.accounts.config.version, 1, StakingError::VersionMismatch);
+        assert_eq!(ctx.accounts.config.version, 1, "Version mismatch");
+
         require!(!ctx.accounts.config.paused, StakingError::ContractPaused);
         require!(amount > 0, StakingError::InvalidStakeAmount);
 
@@ -92,6 +98,9 @@ pub mod bawls_staking {
     }
 
     pub fn unstake(ctx: Context<Unstake>) -> Result<()> {
+        // require_eq!(ctx.accounts.config.version, 1, StakingError::VersionMismatch);
+        assert_eq!(ctx.accounts.config.version, 1, "Version mismatch");
+
         require!(!ctx.accounts.config.paused, StakingError::ContractPaused);
         require!(!ctx.accounts.user_state.locked, StakingError::AlreadyProcessing);
         ctx.accounts.user_state.locked = true;
@@ -165,6 +174,9 @@ pub mod bawls_staking {
     }
 
     pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
+        // require_eq!(ctx.accounts.config.version, 1, StakingError::VersionMismatch);
+        assert_eq!(ctx.accounts.config.version, 1, "Version mismatch");
+
         require!(!ctx.accounts.config.paused, StakingError::ContractPaused);
         require!(!ctx.accounts.user_state.locked, StakingError::AlreadyProcessing);
         ctx.accounts.user_state.locked = true;
@@ -214,6 +226,9 @@ pub mod bawls_staking {
     }
 
     pub fn set_paused(ctx: Context<SetPaused>, paused: bool) -> Result<()> {
+        // require_eq!(ctx.accounts.config.version, 1, StakingError::VersionMismatch);
+        assert_eq!(ctx.accounts.config.version, 1, "Version mismatch");
+
         require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.config.authority, StakingError::Unauthorized);
         ctx.accounts.config.paused = paused;
         Ok(())
@@ -225,6 +240,8 @@ pub mod bawls_staking {
         new_tax_percentage: u8,
         new_min_stake_duration: i64,
     ) -> Result<()> {
+        // require_eq!(ctx.accounts.config.version, 1, StakingError::VersionMismatch);
+        assert_eq!(ctx.accounts.config.version, 1, "Version mismatch");
         require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.config.authority, StakingError::Unauthorized);
 
         ctx.accounts.config.community_wallet = new_community_wallet;
@@ -439,4 +456,6 @@ pub enum StakingError {
     ContractPaused,
     #[msg("Unauthorized access.")]
     Unauthorized,
+    #[msg("Incompatible config version.")]
+    VersionMismatch,
 }
