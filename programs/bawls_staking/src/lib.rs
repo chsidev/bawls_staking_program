@@ -180,7 +180,10 @@ pub mod bawls_staking {
             let user_reward = (user_stake as u128 * new_rewards as u128 / total_staked as u128) as u64;
             require!(user_reward > 0, StakingError::InsufficientFundsInPool);
 
-            ctx.accounts.pool.total_rewards_distributed += user_reward;
+            let available = ctx.accounts.vault.amount;
+            let claimable = user_reward.min(available);
+
+            ctx.accounts.pool.total_rewards_distributed += claimable;
             ctx.accounts.user_state.last_tax_snapshot = ctx.accounts.pool.total_tax_collected;
 
             let signer_seeds: &[&[u8]] = &[CONFIG_SEED, &[ctx.accounts.config.bump]];
@@ -196,11 +199,11 @@ pub mod bawls_staking {
                     },
                     signer,
                 ),
-                user_reward,
+                claimable,
             )?;
             emit!(ClaimRewardsEvent {
                 user: ctx.accounts.user.key(),
-                reward: user_reward,
+                reward: claimable,
                 timestamp: Clock::get()?.unix_timestamp,
             });
 
