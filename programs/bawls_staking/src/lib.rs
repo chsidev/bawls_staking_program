@@ -15,6 +15,7 @@ pub mod bawls_staking {
 
     pub fn initialize(ctx: Context<Initialize>, community_wallet: Pubkey) -> Result<()> {
         require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.payer.key(), StakingError::Unauthorized);
+        ctx.accounts.config.version = 1;
         ctx.accounts.config.authority = ctx.accounts.authority.key();
         ctx.accounts.config.paused = false;
         ctx.accounts.config.community_wallet = community_wallet;
@@ -52,7 +53,10 @@ pub mod bawls_staking {
             signer,
         );
 
-        let _ = create(cpi_ctx); 
+        // let _ = create(cpi_ctx); 
+        if ctx.accounts.vault.to_account_info().owner != &anchor_spl::token::ID {
+            create(cpi_ctx)?;
+        }
         Ok(())
     }
 
@@ -237,7 +241,7 @@ pub mod bawls_staking {
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    #[account(init, seeds = [CONFIG_SEED], bump, payer = payer, space = 8 + 32 + 32 + 1 + 8 + 1 + 1 + 32)]
+    #[account(init, seeds = [CONFIG_SEED], bump, payer = payer, space = 8 + 32 + 32 + 1 + 8 + 1 + 1 + 32 + 1)]
     pub config: Account<'info, Config>,
     #[account(init, seeds = [POOL_SEED], bump, payer = payer, space = 8 + 32)]
     pub pool: Account<'info, StakingPool>,
@@ -351,6 +355,7 @@ pub struct Config {
     pub bump: u8,
     pub paused: bool,
     pub authority: Pubkey,
+    pub version: u8, 
 }
 
 #[account]
