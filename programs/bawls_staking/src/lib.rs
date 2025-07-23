@@ -28,6 +28,13 @@ pub mod bawls_staking {
         ctx.accounts.pool.total_staked = 0;
         ctx.accounts.pool.total_rewards_distributed = 0;
         ctx.accounts.pool.bump = ctx.bumps.pool;
+
+        emit!(InitializedEvent {
+            authority: ctx.accounts.authority.key(),
+            mint: ctx.accounts.token_mint.key(),
+            community_wallet,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
         Ok(())
     }
 
@@ -189,7 +196,14 @@ pub mod bawls_staking {
             let new_rewards = ctx.accounts.pool.total_tax_collected - ctx.accounts.user_state.last_tax_snapshot;
             require!(new_rewards > 0, StakingError::InsufficientFundsInPool);
 
-            let user_reward = (user_stake as u128 * new_rewards as u128 / total_staked as u128) as u64;
+            // let user_reward = (user_stake as u128 * new_rewards as u128 / total_staked as u128) as u64;
+            let user_reward_u128 = (user_stake as u128)
+                .checked_mul(new_rewards as u128)
+                .and_then(|v| v.checked_div(total_staked as u128))
+                .ok_or(StakingError::MathOverflow)?;
+
+            let user_reward = u64::try_from(user_reward_u128)
+                .map_err(|_| StakingError::MathOverflow)?;
             require!(user_reward > 0, StakingError::InsufficientFundsInPool);
 
             let available = ctx.accounts.vault.amount;
@@ -231,6 +245,11 @@ pub mod bawls_staking {
 
         require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.config.authority, StakingError::Unauthorized);
         ctx.accounts.config.paused = paused;
+        emit!(PausedEvent {
+            authority: ctx.accounts.authority.key(),
+            paused,
+            timestamp: Clock::get()?.unix_timestamp,
+        });
         Ok(())
     }
 
@@ -436,6 +455,21 @@ pub struct ConfigUpdatedEvent {
     pub new_min_stake_duration: i64,
 }
 
+#[event]
+pub struct PausedEvent {
+    pub authority: Pubkey,
+    pub paused: bool,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct InitializedEvent {
+    pub authority: Pubkey,
+    pub mint: Pubkey,
+    pub community_wallet: Pubkey,
+    pub timestamp: i64,
+}
+
 #[error_code]
 pub enum StakingError {
     #[msg("Nothing to unstake.")]
@@ -458,4 +492,6 @@ pub enum StakingError {
     Unauthorized,
     #[msg("Incompatible config version.")]
     VersionMismatch,
+    #[msg("Math overflow or conversion failed.")]
+    MathOverflow,
 }
