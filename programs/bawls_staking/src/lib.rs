@@ -252,30 +252,6 @@ pub mod bawls_staking {
         });
         Ok(())
     }
-
-    pub fn set_config(
-        ctx: Context<SetConfig>,
-        new_community_wallet: Pubkey,
-        new_tax_percentage: u8,
-        new_min_stake_duration: i64,
-    ) -> Result<()> {
-        // require_eq!(ctx.accounts.config.version, 1, StakingError::VersionMismatch);
-        assert_eq!(ctx.accounts.config.version, 1, "Version mismatch");
-        require_keys_eq!(ctx.accounts.authority.key(), ctx.accounts.config.authority, StakingError::Unauthorized);
-
-        ctx.accounts.config.community_wallet = new_community_wallet;
-        ctx.accounts.config.tax_percentage = new_tax_percentage;
-        ctx.accounts.config.min_stake_duration = new_min_stake_duration;
-
-        emit!(ConfigUpdatedEvent {
-            authority: ctx.accounts.authority.key(),
-            new_community_wallet,
-            new_tax_percentage,
-            new_min_stake_duration,
-        });
-
-        Ok(())
-    }
 }
 
 #[derive(Accounts)]
